@@ -1,0 +1,25 @@
+[
+  {
+    "scan_timestamp": "2025-07-02 21:40:39",
+    "total_matches_with_var": 1,
+    "var_matches": [
+      {
+        "match_id": "23xmvkh8epxkqg8",
+        "var_incidents": [
+          {
+            "type": 28,
+            "position": 1,
+            "time": 35,
+            "player_id": "l5ergphep5l0r8k",
+            "player_name": "Cristhian Andres Tizon Correa",
+            "var_reason": 1,
+            "var_result": 2
+          }
+        ],
+        "total_incidents": 11,
+        "var_incident_count": 1,
+        "timestamp": "2025-07-02 21:40:39"
+      }
+    ]
+  }
+]
