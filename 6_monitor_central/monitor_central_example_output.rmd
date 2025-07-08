@@ -1,0 +1,241 @@
+---
+title: "Monitor Central Display - Live Match Data"
+author: "Sports Data Pipeline"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(jsonlite)
+library(knitr)
+library(DT)
+```
+
+# Monitor Central JSON Output Example
+
+## Overview
+This document shows what the **Monitor Central display data** would look like when implemented with real match data based on your cleaned roadmap structure.
+
+## Live Match Example: Manchester United vs Liverpool
+
+```{json}
+{
+  "timestamp": "07/02/2025 02:45:30 AM EDT",
+  "match_info": {
+    "match_id": "1234567",
+    "competition_id": "45",
+    "competition_name": "Premier League",
+    "home_team": "Manchester United",
+    "away_team": "Liverpool", 
+    "status": "Status ID: 2 (First Half)",
+    "live_score": "Man United 1 - 0 Liverpool (42')"
+  },
+  "corners": {
+    "home": 3,
+    "away": 5,
+    "total": 8
+  },
+  "odds": {
+    "MoneyLine": [
+      {
+        "time_of_match": "prematch",
+        "Home": "2.15",
+        "Tie": "3.40",
+        "Away": "2.85"
+      },
+      {
+        "time_of_match": "15",
+        "Home": "1.95",
+        "Tie": "3.60",
+        "Away": "3.20"
+      },
+      {
+        "time_of_match": "42",
+        "Home": "1.75",
+        "Tie": "4.10",
+        "Away": "4.50"
+      }
+    ],
+    "Spread": [
+      {
+        "time_of_match": "prematch",
+        "Home": "1.85",
+        "Spread": "-0.5",
+        "Away": "1.95"
+      },
+      {
+        "time_of_match": "15",
+        "Home": "1.90",
+        "Spread": "-0.5",
+        "Away": "1.90"
+      },
+      {
+        "time_of_match": "42",
+        "Home": "1.80",
+        "Spread": "-1.0",
+        "Away": "2.00"
+      }
+    ],
+    "O/U": [
+      {
+        "time_of_match": "prematch",
+        "Over": "1.90",
+        "Total": "2.5",
+        "Under": "1.90"
+      },
+      {
+        "time_of_match": "15",
+        "Over": "1.85",
+        "Total": "2.5",
+        "Under": "1.95"
+      },
+      {
+        "time_of_match": "42",
+        "Over": "2.10",
+        "Total": "3.5",
+        "Under": "1.75"
+      }
+    ],
+    "Corners": [
+      {
+        "time_of_match": "prematch",
+        "Over": "1.95",
+        "Total": "9.5",
+        "Under": "1.85"
+      },
+      {
+        "time_of_match": "15",
+        "Over": "1.80",
+        "Total": "10.5",
+        "Under": "2.00"
+      },
+      {
+        "time_of_match": "42",
+        "Over": "2.20",
+        "Total": "11.5",
+        "Under": "1.65"
+      }
+    ]
+  },
+  "environment": {
+    "weather": "Clear",
+    "pressure": "29.9 inHg",
+    "temperature": "64°F",
+    "wind": "3.1 mph NE",
+    "humidity": "65%"
+  }
+}
+```
+
+## Key Data Fields Breakdown
+
+### 🕐 Timestamp Information
+- **NYC Timestamp**: `07/02/2025 02:45:30 AM EDT`
+- **Source**: `SOURCE_PRETTY_PRINT_HEADER.nyc_timestamp`
+
+### ⚽ Match Information
+```{r echo=FALSE}
+match_data <- data.frame(
+  Field = c("Match ID", "Competition", "Home Team", "Away Team", "Status", "Live Score"),
+  Value = c("1234567", "Premier League", "Manchester United", "Liverpool", 
+           "Status ID: 2 (First Half)", "Man United 1 - 0 Liverpool (42')"),
+  Source = c("parsed_details.id", "parsed_details.competition_name", 
+            "parsed_details.home_team_name", "parsed_details.away_team_name",
+            "Formatted status_id", "formatted_live_score")
+)
+
+kable(match_data, caption = "Match Information Fields")
+```
+
+### 🚩 Corner Statistics
+```{r echo=FALSE}
+corner_data <- data.frame(
+  Team = c("Manchester United (Home)", "Liverpool (Away)", "Total"),
+  Corners = c(3, 5, 8),
+  Source = c("live_data.parsed_score.home_detailed.corners",
+            "live_data.parsed_score.away_detailed.corners", 
+            "Calculated: home + away")
+)
+
+kable(corner_data, caption = "Corner Statistics")
+```
+
+### 💰 Betting Odds Evolution
+
+#### MoneyLine Odds Movement
+```{r echo=FALSE}
+moneyline_data <- data.frame(
+  Time = c("Pre-match", "15 min", "42 min"),
+  Home = c("2.15", "1.95", "1.75"),
+  Tie = c("3.40", "3.60", "4.10"),
+  Away = c("2.85", "3.20", "4.50"),
+  Notes = c("Liverpool slightly favored", "Even odds", "Man United heavily favored")
+)
+
+kable(moneyline_data, caption = "MoneyLine Odds Evolution")
+```
+
+#### Spread Betting
+```{r echo=FALSE}
+spread_data <- data.frame(
+  Time = c("Pre-match", "15 min", "42 min"),
+  Home = c("1.85", "1.90", "1.80"),
+  Spread = c("-0.5", "-0.5", "-1.0"),
+  Away = c("1.95", "1.90", "2.00")
+)
+
+kable(spread_data, caption = "Spread Betting Odds")
+```
+
+### 🌤️ Environmental Conditions (Converted to US Units)
+```{r echo=FALSE}
+environment_data <- data.frame(
+  Condition = c("Weather", "Pressure", "Temperature", "Wind", "Humidity"),
+  Value = c("Clear", "29.9 inHg", "64°F", "3.1 mph NE", "65%"),
+  Original = c("Clear", "1013 hPa", "18°C", "5 km/h NE", "65%"),
+  Conversion = c("No change", "hPa → inHg", "°C → °F", "km/h → mph", "No change")
+)
+
+kable(environment_data, caption = "Environmental Data with US Unit Conversions")
+```
+
+## Unit Conversions Applied
+
+### 🌡️ Temperature Conversion
+- **Original**: 18°C
+- **Converted**: 64°F
+- **Formula**: `°F = (°C × 9/5) + 32`
+
+### 🌪️ Wind Speed Conversion  
+- **Original**: 5 km/h
+- **Converted**: 3.1 mph
+- **Formula**: `mph = km/h × 0.621371`
+
+### 📊 Pressure Conversion
+- **Original**: 1013 hPa
+- **Converted**: 29.9 inHg  
+- **Formula**: `inHg = hPa × 0.02953`
+
+## Implementation Notes
+
+1. **Odds Time Tracking**: Shows how betting odds change throughout the match
+2. **Corner Calculation**: Automatically sums home and away corners
+3. **Status Formatting**: Clear display of match status with ID and description
+4. **US Unit System**: All environmental data converted to US standard units
+5. **Real-time Updates**: Data structure supports live updating every 60 seconds
+
+## Data Pipeline Integration
+
+This JSON structure is the final output of your 4-stage pipeline:
+1. **all_api.py** → Raw data collection
+2. **merge.py** → Data enrichment  
+3. **pretty_print.py** → Data cleaning
+4. **monitor_central.py** → Final display formatting
+
+**Perfect for**: Dashboards, mobile apps, web interfaces, and monitoring systems!

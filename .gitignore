@@ -1,0 +1,43 @@
+TELEGRAM_CREDENTIALS.md
+*.log
+node_modules/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Log files and directories
+*_log/
+*log*.json
+*_fetch_state.json
+Alert_log/
+*/log/
+*/logs/
+*/*_log/
+*/*/*_log/
+
+# Main pipeline output files (accumulated data)
+all_api.json
+merge.json
+pretty_print.json
+pretty_print_conversion.json
+monitor_central.json
+alert_3ou_half.json
+alert_underdog_0half.json
+
+# Test files
+test-*.json
+test_*.py
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

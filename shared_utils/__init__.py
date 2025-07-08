@@ -1,0 +1,1 @@
+# Shared utilities for persistent state management across pipeline stages

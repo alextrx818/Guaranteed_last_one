@@ -1,0 +1,100 @@
+{
+  "MONITOR_CENTRAL_DISPLAY_FIELDS": {
+    "timestamp_info": {
+      "nyc_timestamp": "Use from SOURCE_PRETTY_PRINT_HEADER - represents when this match data was fetched"
+    },
+    "match_basic_info": {
+      "match_id": "From parsed_details.id",
+      "competition_id": "From parsed_details.competition_id", 
+      "competition_name": "From parsed_details.competition_name",
+      "home_team_name": "From parsed_details.home_team_name",
+      "away_team_name": "From parsed_details.away_team_name",
+      "status_display": "Format: 'Status ID: {status_id} ({status_name})' - Example: 'Status ID: 2 (First Half)'",
+      "formatted_live_score": "From formatted_live_score field"
+    },
+    "corner_statistics": {
+      "home_corners": "From live_data.parsed_score.home_detailed.corners",
+      "away_corners": "From live_data.parsed_score.away_detailed.corners", 
+      "total_corners": "Calculate: home_corners + away_corners"
+    },
+    "betting_odds": {
+      "MoneyLine": {
+        "structure": [
+          {
+            "time_of_match": "When odds were captured",
+            "Home": "Home team odds",
+            "Tie": "Draw odds", 
+            "Away": "Away team odds"
+          }
+        ]
+      },
+      "Spread": {
+        "structure": [
+          {
+            "time_of_match": "When odds were captured",
+            "Home": "Home team spread odds",
+            "Spread": "Point spread value",
+            "Away": "Away team spread odds"
+          }
+        ]
+      },
+      "O/U": {
+        "structure": [
+          {
+            "time_of_match": "When odds were captured", 
+            "Over": "Over odds",
+            "Total": "Total line",
+            "Under": "Under odds"
+          }
+        ]
+      },
+      "Corners": {
+        "structure": [
+          {
+            "time_of_match": "When odds were captured",
+            "Over": "Over corner odds", 
+            "Total": "Corner total line",
+            "Under": "Under corner odds"
+          }
+        ]
+      }
+    },
+    "environmental_data": {
+      "weather": "From raw_match_details.environment.weather",
+      "pressure": "From raw_match_details.environment.pressure",
+      "temperature": "From raw_match_details.environment.temperature", 
+      "wind": "From raw_match_details.environment.wind",
+      "humidity": "From raw_match_details.environment.humidity"
+    }
+  },
+  "CLEAN_DISPLAY_STRUCTURE": {
+    "timestamp": "",
+    "match_info": {
+      "match_id": "",
+      "competition_id": "",
+      "competition_name": "",
+      "home_team": "",
+      "away_team": "", 
+      "status": "",
+      "live_score": ""
+    },
+    "corners": {
+      "home": "",
+      "away": "",
+      "total": ""
+    },
+    "odds": {
+      "MoneyLine": [],
+      "Spread": [],
+      "O/U": [],
+      "Corners": []
+    },
+    "environment": {
+      "weather": "",
+      "pressure": "",
+      "temperature": "",
+      "wind": "",
+      "humidity": ""
+    }
+  }
+}

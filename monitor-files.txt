@@ -1,0 +1,2 @@
+./7_alert_3ou_half/alert_3ou_half.json
+./8_alert_underdog_0half/alert_underdog_0half.json

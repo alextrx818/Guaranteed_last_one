@@ -1,0 +1,106 @@
+{
+  "timestamp": "07/02/2025 02:45:30 AM EDT",
+  "match_info": {
+    "match_id": "1234567",
+    "competition_id": "45",
+    "competition_name": "Premier League",
+    "home_team": "Manchester United",
+    "away_team": "Liverpool", 
+    "status": "Status ID: 2 (First Half)",
+    "live_score": "Man United 1 - 0 Liverpool (42')"
+  },
+  "corners": {
+    "home": 3,
+    "away": 5,
+    "total": 8
+  },
+  "odds": {
+    "MoneyLine": [
+      {
+        "time_of_match": "prematch",
+        "Home": "2.15",
+        "Tie": "3.40",
+        "Away": "2.85"
+      },
+      {
+        "time_of_match": "15",
+        "Home": "1.95",
+        "Tie": "3.60",
+        "Away": "3.20"
+      },
+      {
+        "time_of_match": "42",
+        "Home": "1.75",
+        "Tie": "4.10",
+        "Away": "4.50"
+      }
+    ],
+    "Spread": [
+      {
+        "time_of_match": "prematch",
+        "Home": "1.85",
+        "Spread": "-0.5",
+        "Away": "1.95"
+      },
+      {
+        "time_of_match": "15",
+        "Home": "1.90",
+        "Spread": "-0.5",
+        "Away": "1.90"
+      },
+      {
+        "time_of_match": "42",
+        "Home": "1.80",
+        "Spread": "-1.0",
+        "Away": "2.00"
+      }
+    ],
+    "O/U": [
+      {
+        "time_of_match": "prematch",
+        "Over": "1.90",
+        "Total": "2.5",
+        "Under": "1.90"
+      },
+      {
+        "time_of_match": "15",
+        "Over": "1.85",
+        "Total": "2.5",
+        "Under": "1.95"
+      },
+      {
+        "time_of_match": "42",
+        "Over": "2.10",
+        "Total": "3.5",
+        "Under": "1.75"
+      }
+    ],
+    "Corners": [
+      {
+        "time_of_match": "prematch",
+        "Over": "1.95",
+        "Total": "9.5",
+        "Under": "1.85"
+      },
+      {
+        "time_of_match": "15",
+        "Over": "1.80",
+        "Total": "10.5",
+        "Under": "2.00"
+      },
+      {
+        "time_of_match": "42",
+        "Over": "2.20",
+        "Total": "11.5",
+        "Under": "1.65"
+      }
+    ]
+  },
+  "environment": {
+    "weather": "Clear",
+    "pressure": "1013 hPa",
+    "temperature": "18°C",
+    "wind": "5 km/h NE",
+    "humidity": "65%"
+  }
+}

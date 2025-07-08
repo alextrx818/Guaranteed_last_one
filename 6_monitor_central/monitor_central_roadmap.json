@@ -1,0 +1,182 @@
+{
+  "CONVERSION_HEADER": {
+    "fetch_number": "",
+    "random_fetch_id": "",
+    "nyc_timestamp": "",
+    "fetch_start": ""
+  },
+  "CONVERTED_DATA": {
+    "SOURCE_PRETTY_PRINT_HEADER": {
+      "fetch_number": "",
+      "random_fetch_id": "",
+      "nyc_timestamp": "",
+      "fetch_start": ""
+    },
+    "MATCHES_WITH_CONVERTED_ODDS": [
+      {
+        "match_id": "",
+        "formatted_live_score": "",
+        "live_data": {
+          "raw_score_array": [],
+          "incidents": [],
+          "parsed_score": {
+            "match_id": "",
+            "status": "",
+            "home_stats": [],
+            "away_stats": [],
+            "kickoff_timestamp": "",
+            "compatible_ignore": "",
+            "home_detailed": {
+              "score_regular": "",
+              "score_halftime": "",
+              "red_cards": "",
+              "yellow_cards": "",
+              "corners": "",
+              "overtime_score": "",
+              "penalty_score": ""
+            },
+            "away_detailed": {
+              "score_regular": "",
+              "score_halftime": "",
+              "red_cards": "",
+              "yellow_cards": "",
+              "corners": "",
+              "overtime_score": "",
+              "penalty_score": ""
+            }
+          }
+        },
+        "match_details": {
+          "parsed_details": {
+            "id": "",
+            "season_id": "",
+            "competition_id": "",
+            "competition_name": "",
+            "country_id": "",
+            "country_name": "",
+            "home_team_id": "",
+            "home_team_name": "",
+            "away_team_id": "",
+            "away_team_name": "",
+            "status_id": "",
+            "match_time": "",
+            "venue_id": "",
+            "referee_id": "",
+            "neutral": "",
+            "note": ""
+          }
+        },
+        "raw_match_details": {
+          "id": "",
+          "season_id": "",
+          "competition_id": "",
+          "home_team_id": "",
+          "away_team_id": "",
+          "status_id": "",
+          "match_time": "",
+          "venue_id": "",
+          "referee_id": "",
+          "neutral": "",
+          "note": "",
+          "home_scores": [],
+          "away_scores": [],
+          "home_position": "",
+          "away_position": "",
+          "coverage": {
+            "mlive": "",
+            "lineup": ""
+          },
+          "round": {
+            "stage_id": "",
+            "round_num": "",
+            "group_num": ""
+          },
+          "environment": {
+            "weather": "",
+            "pressure": "",
+            "temperature": "",
+            "wind": "",
+            "humidity": ""
+          },
+          "ended": "",
+          "updated_at": ""
+        },
+        "home_team": {
+          "parsed_team": {
+            "id": "",
+            "name": "",
+            "short_name": "",
+            "logo": "",
+            "country_id": "",
+            "competition_id": ""
+          }
+        },
+        "away_team": {
+          "parsed_team": {
+            "id": "",
+            "name": "",
+            "short_name": "",
+            "logo": "",
+            "country_id": "",
+            "competition_id": ""
+          }
+        },
+        "competition": {
+          "parsed_competition": {
+            "id": "",
+            "name": "",
+            "short_name": "",
+            "logo": "",
+            "country_id": "",
+            "category_id": ""
+          }
+        },
+        "converted_odds": {
+          "Spread": [
+            {
+              "time_of_match": "",
+              "Home": "",
+              "Spread": "",
+              "Away": ""
+            }
+          ],
+          "MoneyLine": [
+            {
+              "time_of_match": "",
+              "Home": "",
+              "Tie": "",
+              "Away": ""
+            }
+          ],
+          "O/U": [
+            {
+              "time_of_match": "",
+              "Over": "",
+              "Total": "",
+              "Under": ""
+            }
+          ],
+          "Corners": [
+            {
+              "time_of_match": "",
+              "Over": "",
+              "Total": "",
+              "Under": ""
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "CONVERSION_FOOTER": {
+    "random_fetch_id": "",
+    "nyc_timestamp": "",
+    "conversion_completion_time_seconds": "",
+    "fetch_end": "",
+    "total_matches_with_odds": "",
+    "pipeline_completion_time_seconds": "",
+    "total_matches": "",
+    "matches_in_play": "",
+    "match_status_breakdown": []
+  }
+}
