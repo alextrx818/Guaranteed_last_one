@@ -1,0 +1,150 @@
+{
+  "monitor_central_display": [
+    {
+      "timestamp": "07/08/2025 10:40:59 PM EDT",
+      "match_info": {
+        "match_id": "REGULAR_5_001",
+        "competition_id": "regular_comp_5",
+        "competition_name": "Premier League",
+        "home_team": "Manchester City",
+        "away_team": "Arsenal",
+        "status": "Status ID: 4 (Second half)",
+        "live_score": "Live Score: 1-0 (HT: 1-0)"
+      },
+      "corners": {
+        "home": 4,
+        "away": 2,
+        "total": 6
+      },
+      "odds": {
+        "O/U": [
+          {
+            "time_of_match": "4",
+            "Over": "-110",
+            "Total": 3.5,
+            "Under": "-110"
+          }
+        ],
+        "MoneyLine": [
+          {
+            "time_of_match": "4",
+            "Home": "-150",
+            "Tie": "+300",
+            "Away": "+400"
+          }
+        ]
+      },
+      "environment": {
+        "weather": "Clear",
+        "pressure": "30.0 inHg",
+        "temperature_f": "72 F",
+        "wind": "5mph",
+        "humidity": "50%"
+      },
+      "incidents": []
+    },
+    {
+      "timestamp": "07/08/2025 10:40:59 PM EDT",
+      "match_info": {
+        "match_id": "REGULAR_5_002",
+        "competition_id": "regular_comp_5",
+        "competition_name": "La Liga",
+        "home_team": "Barcelona",
+        "away_team": "Real Madrid",
+        "status": "Status ID: 8 (End)",
+        "live_score": "Live Score: 2-1 (HT: 1-1)"
+      },
+      "corners": {
+        "home": 6,
+        "away": 4,
+        "total": 10
+      },
+      "odds": {
+        "O/U": [
+          {
+            "time_of_match": "8",
+            "Over": "-105",
+            "Total": 2.5,
+            "Under": "-115"
+          }
+        ],
+        "MoneyLine": [
+          {
+            "time_of_match": "8",
+            "Home": "+180",
+            "Tie": "+220",
+            "Away": "+160"
+          }
+        ]
+      },
+      "environment": {
+        "weather": "Sunny",
+        "pressure": "29.8 inHg",
+        "temperature_f": "75 F",
+        "wind": "8mph",
+        "humidity": "45%"
+      },
+      "incidents": []
+    },
+    {
+      "timestamp": "07/08/2025 10:40:59 PM EDT",
+      "match_info": {
+        "match_id": "REGULAR_5_003",
+        "competition_id": "regular_comp_5",
+        "competition_name": "Serie A",
+        "home_team": "Juventus",
+        "away_team": "AC Milan",
+        "status": "Status ID: 3 (Half-time)",
+        "live_score": "Live Score: 0-0 (HT: 0-0)"
+      },
+      "corners": {
+        "home": 2,
+        "away": 1,
+        "total": 3
+      },
+      "odds": {
+        "O/U": [
+          {
+            "time_of_match": "3",
+            "Over": "-120",
+            "Total": 2.5,
+            "Under": "+100"
+          }
+        ],
+        "MoneyLine": [
+          {
+            "time_of_match": "3",
+            "Home": "+140",
+            "Tie": "+200",
+            "Away": "+180"
+          }
+        ]
+      },
+      "environment": {
+        "weather": "Partly Cloudy",
+        "pressure": "29.9 inHg",
+        "temperature_f": "68 F",
+        "wind": "10mph",
+        "humidity": "60%"
+      },
+      "incidents": []
+    }
+  ],
+  "total_matches": 3,
+  "generated_at": "07/08/2025 10:40:59 PM EDT",
+  "MONITOR_FOOTER": {
+    "random_fetch_id": "REALISTIC_5",
+    "nyc_timestamp": "07/08/2025 10:40:59 PM EDT",
+    "pipeline_completion_time_seconds": 2.0,
+    "conversion_completion_time_seconds": 0.001,
+    "fetch_end": "=== REALISTIC FETCH #5 DATA END ===",
+    "total_matches": 3,
+    "matches_in_play": 2,
+    "match_status_breakdown": [
+      "Status ID 4 (Second half): 1 matches",
+      "Status ID 8 (End): 1 matches",
+      "Status ID 3 (Half-time): 1 matches"
+    ],
+    "total_matches_with_odds": 3
+  }
+}

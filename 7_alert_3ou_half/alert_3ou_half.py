@@ -32,36 +32,30 @@ class Alert3OUHalfLogger:
         log_filename = f"alert_3ou_half_log_{timestamp}.json"
         self.log_path = os.path.join(self.log_dir, log_filename)
     
-    def log_fetch(self, monitor_data, fetch_id, nyc_timestamp):
-        """Pure catch-all pass-through logging with NYC timestamps"""
+    def log_fetch_qualifying_only(self, filtered_matches, fetch_id, nyc_timestamp):
+        """CLEAN LOGGING: Only log when matches meet criteria - raw match data only"""
+        if not filtered_matches or len(filtered_matches) == 0:
+            # Don't log anything if no matches meet criteria
+            return
+        
         self.fetch_count += 1
         
-        # Add NYC timestamp to the data
-        log_entry = {
-            "ALERT_3OU_HEADER": {
-                "fetch_number": self.fetch_count,
-                "nyc_timestamp": nyc_timestamp,
-                "fetch_start": "=== ALERT 3OU HALF DATA START ==="
-            },
-            "FILTERED_DATA": monitor_data,  # The filtered data
-            "ALERT_3OU_FOOTER": {
-                "nyc_timestamp": nyc_timestamp,
-                "fetch_end": "=== ALERT 3OU HALF DATA END ==="
-            }
-        }
-        
-        # Save state after each fetch
+        # Save state after each fetch (for rotation tracking)
         self.state_manager.save_state(self.fetch_count, self.accumulated_data)
         
-        # Write to rotating log
+        # Write to rotating log (keep for internal tracking)
         with open(self.log_path, 'w') as f:
             json.dump(self.accumulated_data, f, indent=2)
         
-        # Append to main alert_3ou_half.json file
+        # CLEAN LOGGING: Only the essential data
         with open('alert_3ou_half.json', 'a') as f:
             f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
-            json.dump(log_entry, f, indent=2)
-            f.write('\n')
+            
+            # Log each qualifying match individually - raw format only
+            for match in filtered_matches:
+                json.dump(match, f, indent=2)
+                f.write('\n')
+            
             f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
         
         # Check for rotation
@@ -106,7 +100,9 @@ class Alert3OUHalfProcessor:
                 
                 try:
                     entry = json.loads(entry_str)
-                    if entry.get("alert_3ou_half.py") == "":  # Not processed yet
+                    # Only process if monitor_central.py is completed but alert_3ou_half.py is not
+                    if (entry.get("monitor_central.py") == "completed" and 
+                        entry.get("alert_3ou_half.py") == ""):
                         unprocessed_entries.append(entry)
                 except json.JSONDecodeError:
                     continue
@@ -255,37 +251,40 @@ class Alert3OUHalfProcessor:
             return {"error": f"Could not extract data for fetch ID: {fetch_id}"}
         
         try:
-        
-        # Filter matches based on criteria
-        filtered_matches = self.filter_matches(latest_monitor.get("monitor_central_display", []))
-        
-        # Create filtered data structure
-        filtered_data = latest_monitor.copy()
-        filtered_data["monitor_central_display"] = filtered_matches
-        filtered_data["filtered_match_count"] = len(filtered_matches)
-        
-        # Send telegram alert ONLY for NEW matches (after duplicate removal)
-        if len(filtered_matches) > 0:
-            # Send individual alert for each match
-            for match in filtered_matches:
-                self.send_telegram_alert([match])
-        
-        # Log the filtered data
-        from datetime import datetime
-        import pytz
-        nyc_tz = pytz.timezone('America/New_York')
-        nyc_time = datetime.now(nyc_tz)
-        nyc_timestamp = nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
-        
-        self.logger.log_fetch(filtered_data, fetch_id, nyc_timestamp)
-        
-        # Mark fetch as completed in tracking file
-        self.mark_fetch_completed(fetch_id)
-        
-        # Trigger alert_underdog_0half.py after alert_3ou_half completes
-        self.trigger_underdog_alert()
-        
-        return filtered_data
+            # Filter matches based on criteria
+            filtered_matches = self.filter_matches(latest_monitor.get("monitor_central_display", []))
+            
+            # Create filtered data structure
+            filtered_data = latest_monitor.copy()
+            filtered_data["monitor_central_display"] = filtered_matches
+            filtered_data["filtered_match_count"] = len(filtered_matches)
+            
+            # Send telegram alert ONLY for NEW matches (after duplicate removal)
+            if len(filtered_matches) > 0:
+                # Send individual alert for each match
+                for match in filtered_matches:
+                    self.send_telegram_alert([match])
+            
+            # CLEAN LOGGING: Only log when matches meet criteria
+            from datetime import datetime
+            import pytz
+            nyc_tz = pytz.timezone('America/New_York')
+            nyc_time = datetime.now(nyc_tz)
+            nyc_timestamp = nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
+            
+            # Use new clean logging method - only logs if filtered_matches has content
+            self.logger.log_fetch_qualifying_only(filtered_matches, fetch_id, nyc_timestamp)
+            
+            # Mark fetch as completed in tracking file
+            self.mark_fetch_completed(fetch_id)
+            
+            # Trigger alert_underdog_0half.py after alert_3ou_half completes
+            self.trigger_underdog_alert()
+            
+            return filtered_data
+        except Exception as e:
+            print(f"Error processing alert_3ou_half data: {e}")
+            return {"error": f"Processing failed: {e}"}
     
     def trigger_underdog_alert(self):
         """Trigger alert_underdog_0half.py to process the latest monitor_central.json data"""
@@ -312,31 +311,113 @@ class Alert3OUHalfProcessor:
     # ==========================================
     
     def get_existing_match_ids(self):
-        """DUPLICATE PREVENTION: Read own log to find already-logged match IDs"""
+        """DUPLICATE PREVENTION: Read own log to find already-alerted match IDs"""
         try:
             with open('alert_3ou_half.json', 'r') as f:
-                data = json.load(f)
+                content = f.read()
+            
             existing_ids = set()
-            for entry in data:
-                for match in entry.get("monitor_central_display", []):
-                    match_id = match.get("match_info", {}).get("match_id")
-                    if match_id:
-                        existing_ids.add(match_id)
+            
+            # Parse bookended format to extract JSON entries
+            fetch_sections = content.split('=== FETCH START:')
+            for section in fetch_sections[1:]:  # Skip first empty section
+                try:
+                    # Find the JSON content between start and end markers
+                    json_start = section.find('\n{')
+                    json_end = section.find('\n=== FETCH END:')
+                    
+                    if json_start != -1 and json_end != -1:
+                        json_content = section[json_start:json_end].strip()
+                        
+                        # CLEAN LOGGING FORMAT: Handle multiple JSON objects (raw match data)
+                        # Split by }\n{ to get individual match objects
+                        json_objects = json_content.split('}\n{')
+                        
+                        for i, json_obj in enumerate(json_objects):
+                            # Fix JSON formatting for middle objects
+                            if i > 0:
+                                json_obj = '{' + json_obj
+                            if i < len(json_objects) - 1:
+                                json_obj = json_obj + '}'
+                            
+                            try:
+                                entry_data = json.loads(json_obj)
+                                
+                                # Extract match IDs from clean logging format (raw match data)
+                                if isinstance(entry_data, dict) and "match_info" in entry_data:
+                                    match_info = entry_data.get("match_info", {})
+                                    match_id = match_info.get("match_id")
+                                    if match_id:
+                                        existing_ids.add(match_id)
+                                        print(f"🔒 TRACKED MATCH ID: {match_id} - {match_info.get('home_team', 'Unknown')} vs {match_info.get('away_team', 'Unknown')}")
+                                        
+                            except json.JSONDecodeError:
+                                continue
+                                
+                except json.JSONDecodeError as e:
+                    print(f"⚠️ JSON parse error in fetch section: {e}")
+                    continue
+            
+            print(f"📊 DUPLICATE PREVENTION: Found {len(existing_ids)} previously alerted match IDs")
             return existing_ids
-        except (FileNotFoundError, json.JSONDecodeError, KeyError):
-            # If file doesn't exist or is corrupted, return empty set
+        except (FileNotFoundError, IOError):
+            print("📝 DUPLICATE PREVENTION: No existing log file found - starting fresh")
             return set()
     
+    def get_alerted_match_ids_persistent(self):
+        """ADDITIONAL SAFETY: Read persistent alerted match IDs file"""
+        alerted_file = 'alerted_match_ids.txt'
+        try:
+            with open(alerted_file, 'r') as f:
+                ids = set(line.strip() for line in f if line.strip())
+            print(f"🗃️ PERSISTENT TRACKING: Loaded {len(ids)} previously alerted match IDs")
+            return ids
+        except FileNotFoundError:
+            print("🗃️ PERSISTENT TRACKING: No persistent file found - starting fresh")
+            return set()
+    
+    def save_alerted_match_id_persistent(self, match_id, home_team, away_team):
+        """ADDITIONAL SAFETY: Save match ID to persistent tracking file"""
+        alerted_file = 'alerted_match_ids.txt'
+        try:
+            with open(alerted_file, 'a') as f:
+                f.write(f"{match_id}\n")
+            print(f"💾 PERSISTENT SAVE: {match_id} - {home_team} vs {away_team}")
+        except Exception as e:
+            print(f"⚠️ PERSISTENT SAVE ERROR: {e}")
+
     def remove_duplicates(self, filtered_matches):
-        """DUPLICATE PREVENTION: Remove matches already in log"""
-        existing_ids = self.get_existing_match_ids()
+        """ENHANCED DUPLICATE PREVENTION: Multi-layer check using log + persistent file"""
+        # Layer 1: Check log file for previously alerted matches
+        log_existing_ids = self.get_existing_match_ids()
+        
+        # Layer 2: Check persistent tracking file (safety net)
+        persistent_existing_ids = self.get_alerted_match_ids_persistent()
+        
+        # Combine both sources
+        all_existing_ids = log_existing_ids.union(persistent_existing_ids)
+        
         new_matches = []
         
+        print(f"🔍 DUPLICATE CHECK: Found {len(log_existing_ids)} IDs in log, {len(persistent_existing_ids)} in persistent file")
+        print(f"🔍 DUPLICATE CHECK: Total {len(all_existing_ids)} unique existing match IDs")
+        print(f"🔍 DUPLICATE CHECK: Checking {len(filtered_matches)} filtered matches")
+        
         for match in filtered_matches:
-            match_id = match.get("match_info", {}).get("match_id")
-            if match_id not in existing_ids:
+            match_info = match.get("match_info", {})
+            match_id = match_info.get("match_id")
+            home_team = match_info.get("home_team", "Unknown")
+            away_team = match_info.get("away_team", "Unknown")
+            
+            if match_id not in all_existing_ids:
                 new_matches.append(match)
+                print(f"✅ NEW MATCH: {home_team} vs {away_team} (ID: {match_id})")
+                # Immediately save to persistent file to prevent race conditions
+                self.save_alerted_match_id_persistent(match_id, home_team, away_team)
+            else:
+                print(f"🚫 DUPLICATE BLOCKED: {home_team} vs {away_team} (ID: {match_id})")
                 
+        print(f"🔍 DUPLICATE CHECK RESULT: {len(new_matches)} new matches after enhanced duplicate removal")
         return new_matches
     
     # ==========================================
@@ -396,6 +477,13 @@ if __name__ == "__main__":
         try:
             result = alert_3ou_half_processor.process_monitor_data("../6_monitor_central/monitor_central.json")
             print(f"Single alert_3ou_half completed! Logged to: alert_3ou_half.json")
+            
+            # Auto-update results tracking
+            try:
+                from alert_3ou_half_results import AlertResultsTracker
+                AlertResultsTracker().update_tracking_results()
+            except Exception as e:
+                print(f"Results tracking update failed: {e}")
         except Exception as e:
             print(f"Single alert_3ou_half failed: {e}")
         sys.exit(0)
@@ -437,6 +525,13 @@ if __name__ == "__main__":
                 
                 print(f"[Fetch #{fetch_count}] Completed in {duration:.2f} seconds")
                 print(f"[Fetch #{fetch_count}] Logged to: alert_3ou_half.json")
+                
+                # Auto-update results tracking
+                try:
+                    from alert_3ou_half_results import AlertResultsTracker
+                    AlertResultsTracker().update_tracking_results()
+                except Exception as e:
+                    print(f"Results tracking update failed: {e}")
                 
                 # Calculate wait time (60 seconds total cycle time)
                 target_interval = 60

@@ -1,0 +1,45 @@
+=== FETCH START: MOCK_o8xyzeLg | 07/08/2025 10:40:39 PM EDT ===
+{
+  "timestamp": "07/08/2025 10:40:19 PM EDT",
+  "match_info": {
+    "match_id": "QUALIFYING_3_SPECIAL",
+    "competition_id": "qualifying_comp_3",
+    "competition_name": "\ud83d\udea8 FETCH #3 - QUALIFYING MATCH DETECTED",
+    "home_team": "Alert Test FC #3",
+    "away_team": "Telegram United #3",
+    "status": "Status ID: 3 (Half-time)",
+    "live_score": "Live Score: 0-0 (HT: 0-0)"
+  },
+  "corners": {
+    "home": 3,
+    "away": 2,
+    "total": 5
+  },
+  "odds": {
+    "O/U": [
+      {
+        "time_of_match": "3",
+        "Over": "-110",
+        "Total": 3.5,
+        "Under": "-110"
+      }
+    ],
+    "MoneyLine": [
+      {
+        "time_of_match": "3",
+        "Home": "+130",
+        "Tie": "+210",
+        "Away": "+190"
+      }
+    ]
+  },
+  "environment": {
+    "weather": "Perfect Alert Conditions",
+    "pressure": "30.0 inHg",
+    "temperature_f": "73 F",
+    "wind": "3mph",
+    "humidity": "48%"
+  },
+  "incidents": []
+}
+=== FETCH END: MOCK_o8xyzeLg | 07/08/2025 10:40:39 PM EDT ===

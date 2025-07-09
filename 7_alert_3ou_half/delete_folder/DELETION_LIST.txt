@@ -1,0 +1,29 @@
+FILES TO DELETE - ORGANIZED IN DELETE_FOLDER
+
+✅ ALREADY COPIED TO DELETE_FOLDER:
+- alert_results_tracker.py (old duplicate)
+- alert_results_tracking.json (old duplicate) 
+- alert_3ou_half_fetch_state.json (unnecessary counter)
+- test_alert_3ou_half.py (test file)
+- test_clean_logging.py (test file)
+- test_telegram_alerts.py (test file)
+- direct_telegram_test.py (test file)
+- database_style_tracker.py (alternative implementation)
+- integrated_results_example.py (alternative implementation)
+- example_alert_3ou_half_results.md (example file)
+
+🚨 CRITICAL: DO NOT DELETE alerted_match_ids.txt - IT'S CORE TO YOUR SYSTEM!
+
+INSTRUCTIONS:
+1. Delete the entire delete_folder/ directory
+2. Manually delete Alert_log/ and alert_3ou_half_log/ directories
+3. Your system will have only core files remaining
+
+FINAL CORE FILES (KEEP):
+- alert_3ou_half.py (bulletproof processor)
+- alert_3ou_half.json (clean logging)
+- alerted_match_ids.txt (duplicate prevention) ← KEEP!
+- alert_3ou_half_results.py (results tracking)
+- alert_3ou_half_results.json (results data)
+- alert_3ou_half_results.md (markdown report)
+- ultimate_bulletproof_test.py (proven validation)
