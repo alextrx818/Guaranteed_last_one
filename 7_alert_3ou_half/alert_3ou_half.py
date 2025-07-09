@@ -32,10 +32,9 @@ class Alert3OUHalfLogger:
         log_filename = f"alert_3ou_half_log_{timestamp}.json"
         self.log_path = os.path.join(self.log_dir, log_filename)
     
-    def log_fetch(self, monitor_data):
+    def log_fetch(self, monitor_data, fetch_id, nyc_timestamp):
         """Pure catch-all pass-through logging with NYC timestamps"""
         self.fetch_count += 1
-        nyc_timestamp = self.get_nyc_timestamp()
         
         # Add NYC timestamp to the data
         log_entry = {
@@ -60,8 +59,10 @@ class Alert3OUHalfLogger:
         
         # Append to main alert_3ou_half.json file
         with open('alert_3ou_half.json', 'a') as f:
+            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
             json.dump(log_entry, f, indent=2)
             f.write('\n')
+            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
         
         # Check for rotation
         if self.state_manager.should_rotate(self.fetch_count):
@@ -83,6 +84,111 @@ class Alert3OUHalfLogger:
 class Alert3OUHalfProcessor:
     def __init__(self):
         self.logger = Alert3OUHalfLogger()
+    
+    def find_unprocessed_fetch_id(self):
+        """Find the next unprocessed fetch ID from tracking file"""
+        tracking_file = '/root/Guaranteed_last_one/1_all_api/all_api_fetch_id_tracking.json'
+        
+        try:
+            with open(tracking_file, 'r') as f:
+                content = f.read()
+            
+            # Split by closing brace to get individual entries
+            entries = content.split('}\n{')
+            
+            unprocessed_entries = []
+            for i, entry_str in enumerate(entries):
+                # Fix JSON formatting for middle entries
+                if i > 0:
+                    entry_str = '{' + entry_str
+                if i < len(entries) - 1:
+                    entry_str = entry_str + '}'
+                
+                try:
+                    entry = json.loads(entry_str)
+                    if entry.get("alert_3ou_half.py") == "":  # Not processed yet
+                        unprocessed_entries.append(entry)
+                except json.JSONDecodeError:
+                    continue
+            
+            # Return the NEWEST unprocessed entry (last in the list)
+            if unprocessed_entries:
+                return unprocessed_entries[-1].get("fetch_id")
+            
+            return None  # Nothing to process
+        except Exception as e:
+            print(f"Error reading tracking file: {e}")
+            return None
+    
+    def extract_fetch_data_by_id(self, fetch_id, input_file_path):
+        """Extract complete fetch data between header and footer markers"""
+        try:
+            with open(input_file_path, 'r') as f:
+                content = f.read()
+            
+            # Find start marker
+            start_marker = f'=== FETCH START: {fetch_id} |'
+            start_pos = content.find(start_marker)
+            
+            if start_pos == -1:
+                return None
+            
+            # Find end marker
+            end_marker = f'=== FETCH END: {fetch_id} |'
+            end_pos = content.find(end_marker, start_pos)
+            
+            if end_pos == -1:
+                return None
+            
+            # Extract JSON between markers
+            fetch_section = content[start_pos:end_pos]
+            json_start = fetch_section.find('\n{')
+            json_end = fetch_section.rfind('\n}') + 2
+            
+            if json_start == -1 or json_end == -1:
+                return None
+            
+            json_content = fetch_section[json_start:json_end]
+            return json.loads(json_content)
+            
+        except Exception as e:
+            print(f"Error extracting fetch data for {fetch_id}: {e}")
+            return None
+    
+    def mark_fetch_completed(self, fetch_id):
+        """Mark fetch as completed in tracking file"""
+        tracking_file = '/root/Guaranteed_last_one/1_all_api/all_api_fetch_id_tracking.json'
+        
+        try:
+            # Read all entries
+            with open(tracking_file, 'r') as f:
+                content = f.read()
+            
+            # Split by closing brace to get individual entries
+            entries = content.split('}\n{')
+            
+            updated_entries = []
+            for i, entry_str in enumerate(entries):
+                # Fix JSON formatting for middle entries
+                if i > 0:
+                    entry_str = '{' + entry_str
+                if i < len(entries) - 1:
+                    entry_str = entry_str + '}'
+                
+                try:
+                    entry = json.loads(entry_str)
+                    if entry.get("fetch_id") == fetch_id:
+                        entry["alert_3ou_half.py"] = "completed"
+                    updated_entries.append(json.dumps(entry, indent=2))
+                except json.JSONDecodeError:
+                    continue
+            
+            # Write back updated entries
+            with open(tracking_file, 'w') as f:
+                f.write('\n'.join(updated_entries) + '\n')
+                
+        except Exception as e:
+            print(f"Error marking fetch {fetch_id} as completed: {e}")
     
     # ===== TELEGRAM MESSAGING MODULE - ISOLATED SECTION =====
     def send_telegram_alert(self, filtered_matches):
@@ -138,18 +244,17 @@ class Alert3OUHalfProcessor:
     def process_monitor_data(self, monitor_data_path):
         """Filter matches: Status 3 (Half-time), 0-0 score, O/U Total >= 3.0"""
         
-        # Read latest monitor from monitor_central.json (last line)
-        with open(monitor_data_path, 'r') as f:
-            lines = f.readlines()
+        # Find unprocessed fetch ID using new tracking system
+        fetch_id = self.find_unprocessed_fetch_id()
+        if not fetch_id:
+            return {"error": "No unprocessed fetch IDs found"}
         
-        # Get the latest monitor data (last line)
-        if not lines:
-            return {"error": "No valid data in monitor_central.json"}
+        # Extract complete fetch data by ID
+        latest_monitor = self.extract_fetch_data_by_id(fetch_id, monitor_data_path)
+        if not latest_monitor:
+            return {"error": f"Could not extract data for fetch ID: {fetch_id}"}
         
         try:
-            latest_monitor = json.loads(lines[-1].strip())
-        except json.JSONDecodeError:
-            return {"error": "Invalid JSON in latest monitor"}
         
         # Filter matches based on criteria
         filtered_matches = self.filter_matches(latest_monitor.get("monitor_central_display", []))
@@ -166,7 +271,16 @@ class Alert3OUHalfProcessor:
                 self.send_telegram_alert([match])
         
         # Log the filtered data
-        self.logger.log_fetch(filtered_data)
+        from datetime import datetime
+        import pytz
+        nyc_tz = pytz.timezone('America/New_York')
+        nyc_time = datetime.now(nyc_tz)
+        nyc_timestamp = nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
+        
+        self.logger.log_fetch(filtered_data, fetch_id, nyc_timestamp)
+        
+        # Mark fetch as completed in tracking file
+        self.mark_fetch_completed(fetch_id)
         
         # Trigger alert_underdog_0half.py after alert_3ou_half completes
         self.trigger_underdog_alert()

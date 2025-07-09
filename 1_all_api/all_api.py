@@ -1,4 +1,13 @@
 # LOGGING ANALYSIS REFERENCE: See logging_indepth_analysis.md for comprehensive independent analysis methodology
+# 
+# PIPELINE ORCHESTRATION NOTES:
+# - all_api.py is the PIPELINE STARTER that fetches raw data from TheSports.com API
+# - After each fetch completes, trigger_merge() function orchestrates post-fetch processing:
+#   1. Starts merge.py (next pipeline stage)
+#   2. Starts all_api_var_logger.py (VAR incident detection)
+#   3. Creates all_api_mirror.json (lightweight monitoring file)
+# - trigger_merge() is poorly named - it's really "trigger_entire_downstream_pipeline()"
+#
 # API Credentials
 user = "thenecpt"
 secret = "0c55322e8e196d6ef9066fa4252cf386"
@@ -32,6 +41,25 @@ class AllApiLogger:
         nyc_time = datetime.now(nyc_tz)
         return nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
     
+    def log_fetch_id_tracking(self, fetch_id):
+        """Log fetch ID with timestamp for pipeline tracking"""
+        tracking_entry = {
+            "fetch_id": fetch_id,
+            "created_at": self.get_nyc_timestamp(),
+            "status": "created",
+            "merge.py": "",
+            "pretty_print.py": "",
+            "pretty_print_conversion.py": "",
+            "monitor_central.py": "",
+            "alert_3ou_half.py": "",
+            "alert_underdog_0half.py": ""
+        }
+        
+        # Append to tracking log
+        with open('all_api_fetch_id_tracking.json', 'a') as f:
+            json.dump(tracking_entry, f, indent=2)
+            f.write('\n')
+    
     def setup_logging(self):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
@@ -55,6 +83,7 @@ class AllApiLogger:
         """Log pure raw API data with header/footer containing random ID and NYC timestamp"""
         self.fetch_count += 1
         fetch_id = self.generate_random_id()
+        self.log_fetch_id_tracking(fetch_id)
         nyc_timestamp = self.get_nyc_timestamp()
         
         footer_data = {
@@ -87,8 +116,10 @@ class AllApiLogger:
         
         # Append to main all_api.json file
         with open('all_api.json', 'a') as f:
+            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
             json.dump(log_entry, f, indent=2)
             f.write('\n')
+            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
         
         if self.fetch_count >= self.max_fetches:
             self.rotate_log()
@@ -188,6 +219,12 @@ class AllApiCatchAllFetcher:
             subprocess.run([sys.executable, 'all_api_var_logger.py'], cwd=os.path.dirname(__file__), check=False)
         except Exception as e:
             print(f"Warning: Could not trigger VAR logger: {e}")
+        
+        # Create monitoring mirror file
+        try:
+            subprocess.run([sys.executable, 'all_api_mirror.py'], cwd=os.path.dirname(__file__), check=False)
+        except Exception as e:
+            print(f"Warning: Could not create mirror file: {e}")
     
     def analyze_match_stats(self, all_data):
         """Analyze match statistics from live data"""
