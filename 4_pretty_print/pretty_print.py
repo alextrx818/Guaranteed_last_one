@@ -11,64 +11,54 @@ from persistent_state import PersistentStateManager
 
 class PrettyPrintLogger:
     def __init__(self, log_dir="pretty_print_log", max_fetches=50):
-        self.log_dir = log_dir
-        self.max_fetches = max_fetches
-        self.state_manager = PersistentStateManager("pretty_print", max_fetches)
-        self.fetch_count, self.accumulated_data = self.state_manager.load_state()
-        self.setup_logging()
-    
-    def setup_logging(self):
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"pretty_print_log_{timestamp}.json"
-        self.log_path = os.path.join(self.log_dir, log_filename)
-        
-        self.logger = logging.getLogger('pretty_print_logger')
-        self.logger.setLevel(logging.INFO)
-        
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        handler = logging.FileHandler(self.log_path)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        # Simple S3 delegation - no local state needed
+        print(f"[Pretty Print Logger] Initialized - delegates to S3 external script")
     
     def log_fetch(self, merged_data, fetch_id, nyc_timestamp):
-        """Pure catch-all pass-through logging with persistent state"""
-        self.fetch_count += 1
-        
-        # Pure pass-through - use the data exactly as received from merge.py
-        log_entry = merged_data
-        
-        # Save state after each fetch
-        self.state_manager.save_state(self.fetch_count, self.accumulated_data)
-        
-        # Write to rotating log
-        with open(self.log_path, 'w') as f:
-            json.dump(self.accumulated_data, f, indent=2)
-        
-        # Append to main pretty_print.json file
-        with open('pretty_print.json', 'a') as f:
-            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
-            json.dump(log_entry, f, indent=2)
-            f.write('\n')
-            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
-        
-        # Check for rotation
-        if self.state_manager.should_rotate(self.fetch_count):
-            self.rotate_log()
+        """Delegate to external S3 script for logging"""
+        try:
+            import subprocess
+            import tempfile
+            
+            print(f"[Pretty Print Logger] Starting delegation - fetch_id: {fetch_id}")
+            
+            # Create temp file with log data
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                log_data = {
+                    "cleaned_data": merged_data,
+                    "fetch_id": fetch_id,
+                    "nyc_timestamp": nyc_timestamp
+                }
+                json.dump(log_data, temp_file)
+                temp_file_path = temp_file.name
+            
+            print(f"[Pretty Print Logger] Created temp file: {temp_file_path}")
+            
+            # Execute external S3 script
+            script_path = os.path.join(os.path.dirname(__file__), 'pretty_print_rotating_s3.py')
+            print(f"[Pretty Print Logger] Calling S3 script: {script_path}")
+            
+            result = subprocess.run([
+                sys.executable, script_path, temp_file_path
+            ], capture_output=True, text=True)
+            
+            print(f"[Pretty Print Logger] S3 script return code: {result.returncode}")
+            if result.stdout:
+                print(f"[Pretty Print Logger] S3 script stdout: {result.stdout}")
+            if result.stderr:
+                print(f"[Pretty Print Logger] S3 script stderr: {result.stderr}")
+            
+            if result.returncode != 0:
+                print(f"[Pretty Print Logger] S3 script failed with code {result.returncode}")
+            else:
+                print(f"[Pretty Print Logger] S3 delegation successful")
+                
+        except Exception as e:
+            print(f"[Pretty Print Logger] Error delegating to S3: {e}")
     
     def rotate_log(self):
-        # Reset state
-        self.state_manager.reset_state()
-        self.fetch_count = 0
-        self.accumulated_data = []
-        self.setup_logging()
-        # Clear the main pretty_print.json file
-        open('pretty_print.json', 'w').close()
+        # No-op - rotation handled by S3 script
+        pass
 
 class PrettyPrintProcessor:
     def __init__(self):
@@ -82,8 +72,11 @@ class PrettyPrintProcessor:
             with open(tracking_file, 'r') as f:
                 content = f.read()
             
+            print(f"[Pretty Print DEBUG] Reading tracking file...")
+            
             # Split by closing brace to get individual entries
             entries = content.split('}\n{')
+            print(f"[Pretty Print DEBUG] Found {len(entries)} entries in tracking file")
             
             unprocessed_entries = []
             for i, entry_str in enumerate(entries):
@@ -97,16 +90,22 @@ class PrettyPrintProcessor:
                     entry = json.loads(entry_str)
                     if entry.get("pretty_print.py") == "":  # Not processed yet
                         unprocessed_entries.append(entry)
+                        print(f"[Pretty Print DEBUG] Found unprocessed entry: {entry.get('fetch_id')}")
                 except json.JSONDecodeError:
                     continue
             
+            print(f"[Pretty Print DEBUG] Found {len(unprocessed_entries)} unprocessed entries")
+            
             # Return the NEWEST unprocessed entry (last in the list)
             if unprocessed_entries:
-                return unprocessed_entries[-1].get("fetch_id")
+                fetch_id = unprocessed_entries[-1].get("fetch_id")
+                print(f"[Pretty Print DEBUG] Returning fetch_id: {fetch_id}")
+                return fetch_id
             
+            print(f"[Pretty Print DEBUG] No unprocessed entries found")
             return None  # Nothing to process
         except Exception as e:
-            print(f"Error reading tracking file: {e}")
+            print(f"[Pretty Print DEBUG] Error reading tracking file: {e}")
             return None
     
     def extract_fetch_data_by_id(self, fetch_id, input_file_path):
@@ -115,19 +114,27 @@ class PrettyPrintProcessor:
             with open(input_file_path, 'r') as f:
                 content = f.read()
             
-            # Find start marker
-            start_marker = f'=== FETCH START: {fetch_id} |'
+            print(f"[Pretty Print DEBUG] Looking for fetch_id: {fetch_id} in {input_file_path}")
+            
+            # Find start marker - match the format used in merge.json with fetch number
+            start_marker = f'| {fetch_id} |'  # This will match "| wBaabkhI3x78 |" pattern
             start_pos = content.find(start_marker)
             
             if start_pos == -1:
+                print(f"[Pretty Print DEBUG] Start marker not found: {start_marker}")
                 return None
             
-            # Find end marker
-            end_marker = f'=== FETCH END: {fetch_id} |'
-            end_pos = content.find(end_marker, start_pos)
+            print(f"[Pretty Print DEBUG] Found start marker at position: {start_pos}")
+            
+            # Find end marker - same pattern for end
+            end_marker = f'| {fetch_id} |'  # Same pattern for end
+            end_pos = content.find(end_marker, start_pos + len(start_marker))  # Find NEXT occurrence
             
             if end_pos == -1:
+                print(f"[Pretty Print DEBUG] End marker not found: {end_marker}")
                 return None
+            
+            print(f"[Pretty Print DEBUG] Found end marker at position: {end_pos}")
             
             # Extract JSON between markers
             fetch_section = content[start_pos:end_pos]
@@ -135,13 +142,15 @@ class PrettyPrintProcessor:
             json_end = fetch_section.rfind('\n}') + 2
             
             if json_start == -1 or json_end == -1:
+                print(f"[Pretty Print DEBUG] Could not find JSON boundaries")
                 return None
             
             json_content = fetch_section[json_start:json_end]
+            print(f"[Pretty Print DEBUG] Successfully extracted JSON data")
             return json.loads(json_content)
             
         except Exception as e:
-            print(f"Error extracting fetch data for {fetch_id}: {e}")
+            print(f"[Pretty Print DEBUG] Error extracting fetch data for {fetch_id}: {e}")
             return None
     
     def mark_fetch_completed(self, fetch_id):
@@ -446,13 +455,21 @@ class PrettyPrintProcessor:
             # Run pretty_print_conversion.py as a subprocess to process the latest data
             pretty_conversion_script_path = os.path.join(os.path.dirname(__file__), '..', '5_pretty_print_conversion', 'pretty_print_conversion.py')
             
+            print(f"[Pretty Print DEBUG] Calling pretty_print_conversion.py at: {pretty_conversion_script_path}")
+            
             # Execute pretty_print_conversion.py with the current pretty_print.json
-            subprocess.run([sys.executable, pretty_conversion_script_path, '--single-run'], 
+            result = subprocess.run([sys.executable, pretty_conversion_script_path, '--single-run'], 
                           cwd=os.path.join(os.path.dirname(__file__), '..', '5_pretty_print_conversion'),
-                          check=False)  # Don't raise exception if pretty_conversion fails
+                          check=False, capture_output=True, text=True)  # Capture output for debugging
+            
+            print(f"[Pretty Print DEBUG] Conversion return code: {result.returncode}")
+            if result.stdout:
+                print(f"[Pretty Print DEBUG] Conversion stdout: {result.stdout}")
+            if result.stderr:
+                print(f"[Pretty Print DEBUG] Conversion stderr: {result.stderr}")
             
         except Exception as e:
-            print(f"Warning: Could not trigger pretty_conversion process: {e}")
+            print(f"[Pretty Print DEBUG] Error triggering pretty_conversion: {e}")
             # Continue normal operation even if pretty_conversion fails
 
 # Initialize the processor
@@ -469,7 +486,7 @@ if __name__ == "__main__":
         # Single execution mode - just do one pass-through and exit
         try:
             result = pretty_print_processor.process_merged_data("../3_merge/merge.json")
-            print(f"Single pretty-print completed! Logged to: {pretty_print_processor.logger.log_path}")
+            print(f"Single pretty-print completed! Data delegated to S3 logger.")
         except Exception as e:
             print(f"Single pretty-print failed: {e}")
         sys.exit(0)
@@ -510,7 +527,7 @@ if __name__ == "__main__":
                 duration = end_time - start_time
                 
                 print(f"[Pretty Print #{pretty_print_count}] Completed in {duration:.2f} seconds")
-                print(f"[Pretty Print #{pretty_print_count}] Logged to: {pretty_print_processor.logger.log_path}")
+                print(f"[Pretty Print #{pretty_print_count}] Data delegated to S3 logger")
                 
                 # Calculate wait time (60 seconds total cycle time)
                 target_interval = 60

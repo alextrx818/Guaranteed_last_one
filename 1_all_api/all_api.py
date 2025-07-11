@@ -1,11 +1,11 @@
-# LOGGING ANALYSIS REFERENCE: See logging_indepth_analysis.md for comprehensive independent analysis methodology
-# 
 # PIPELINE ORCHESTRATION NOTES:
 # - all_api.py is the PIPELINE STARTER that fetches raw data from TheSports.com API
+# - ALL LOGGING is now handled by external script: all_api_rotating_s3.py
 # - After each fetch completes, trigger_merge() function orchestrates post-fetch processing:
 #   1. Starts merge.py (next pipeline stage)
 #   2. Starts all_api_var_logger.py (VAR incident detection)
 #   3. Creates all_api_mirror.json (lightweight monitoring file)
+# - Logging handled by AllApiDataLogger which delegates to all_api_rotating_s3.py
 # - trigger_merge() is poorly named - it's really "trigger_entire_downstream_pipeline()"
 #
 # API Credentials
@@ -13,129 +13,75 @@ user = "thenecpt"
 secret = "0c55322e8e196d6ef9066fa4252cf386"
 
 import json
-import logging
 import os
-import random
-import string
 import asyncio
 import aiohttp
 import time
 from datetime import datetime
 import pytz
 
-class AllApiLogger:
-    def __init__(self, log_dir="all_api_log", max_fetches=50):
-        self.log_dir = log_dir
-        self.max_fetches = max_fetches
-        self.fetch_count = 0
-        self.accumulated_data = []
-        self.setup_logging()
-    
-    def generate_random_id(self, length=12):
-        """Generate random alphanumeric ID for fetch tracking"""
-        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-    
-    def get_nyc_timestamp(self):
-        """Get current NYC timezone timestamp in MM/DD/YYYY format with AM/PM"""
-        nyc_tz = pytz.timezone('America/New_York')
-        nyc_time = datetime.now(nyc_tz)
-        return nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
-    
-    def log_fetch_id_tracking(self, fetch_id):
-        """Log fetch ID with timestamp for pipeline tracking"""
-        tracking_entry = {
-            "fetch_id": fetch_id,
-            "created_at": self.get_nyc_timestamp(),
-            "status": "created",
-            "merge.py": "",
-            "pretty_print.py": "",
-            "pretty_print_conversion.py": "",
-            "monitor_central.py": "",
-            "alert_3ou_half.py": "",
-            "alert_underdog_0half.py": ""
-        }
-        
-        # Append to tracking log
-        with open('all_api_fetch_id_tracking.json', 'a') as f:
-            json.dump(tracking_entry, f, indent=2)
-            f.write('\n')
-    
-    def setup_logging(self):
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"all_api_log_{timestamp}.json"
-        self.log_path = os.path.join(self.log_dir, log_filename)
-        
-        self.logger = logging.getLogger('all_api_logger')
-        self.logger.setLevel(logging.INFO)
-        
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        handler = logging.FileHandler(self.log_path)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+class AllApiDataLogger:
+    """Simplified logger that delegates all logging to external script"""
+    def __init__(self):
+        pass
     
     def log_fetch(self, raw_data, pipeline_duration=None, match_stats=None):
-        """Log pure raw API data with header/footer containing random ID and NYC timestamp"""
-        self.fetch_count += 1
-        fetch_id = self.generate_random_id()
-        self.log_fetch_id_tracking(fetch_id)
-        nyc_timestamp = self.get_nyc_timestamp()
-        
-        footer_data = {
-            "random_fetch_id": fetch_id,
-            "nyc_timestamp": nyc_timestamp,
-            "pipeline_completion_time_seconds": round(pipeline_duration, 3) if pipeline_duration else None,
-            "fetch_end": "=== RAW API DATA END ==="
-        }
-        
-        # Add match statistics to footer
-        if match_stats:
-            footer_data["total_matches"] = match_stats["total_matches"]
-            footer_data["matches_in_play"] = match_stats["matches_in_play"]
-            footer_data["match_status_breakdown"] = match_stats["status_breakdown"]
-        
-        log_entry = {
-            "FETCH_HEADER": {
-                "fetch_number": self.fetch_count,
-                "random_fetch_id": fetch_id,
-                "nyc_timestamp": nyc_timestamp,
-                "fetch_start": "=== RAW API DATA START ==="
-            },
-            "RAW_API_DATA": raw_data,
-            "FETCH_FOOTER": footer_data
-        }
-        
-        # Write to rotating log
-        with open(self.log_path, 'w') as f:
-            json.dump(self.accumulated_data, f, indent=2)
-        
-        # Append to main all_api.json file
-        with open('all_api.json', 'a') as f:
-            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
-            json.dump(log_entry, f, indent=2)
-            f.write('\n')
-            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
-        
-        if self.fetch_count >= self.max_fetches:
-            self.rotate_log()
-    
-    def rotate_log(self):
-        self.fetch_count = 0
-        self.accumulated_data = []
-        # Clear the main all_api.json file
-        open('all_api.json', 'w').close()
-        self.setup_logging()
+        """Delegate logging to external all_api_rotating_s3.py script"""
+        try:
+            import subprocess
+            import sys
+            
+            # Prepare data for external logger
+            log_data = {
+                "raw_data": raw_data,
+                "pipeline_duration": pipeline_duration,
+                "match_stats": match_stats
+            }
+            
+            # Write data to temporary file instead of command line argument
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                json.dump(log_data, temp_file)
+                temp_file_path = temp_file.name
+            
+            # Call external logger script with temp file path
+            result = subprocess.run([
+                sys.executable, 
+                'all_api_rotating_s3.py', 
+                temp_file_path
+            ], 
+            cwd=os.path.dirname(__file__), 
+            check=False,
+            capture_output=True,
+            text=True
+            )
+            
+            # Clean up temp file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+            
+            # Print output from external script
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print(f"Logger stderr: {result.stderr}")
+                
+            if result.returncode != 0:
+                print(f"Warning: External logger failed with return code {result.returncode}")
+            else:
+                print("✅ External logging completed successfully")
+                
+        except Exception as e:
+            print(f"Warning: Could not trigger external logger: {e}")
+            # Continue normal operation even if logging fails
 
 class AllApiCatchAllFetcher:
     def __init__(self):
         self.base_url = "https://api.thesports.com/v1/football/"
         self.auth_params = {'user': user, 'secret': secret}
-        self.logger = AllApiLogger()
+        self.logger = AllApiDataLogger()
         self.semaphore = asyncio.Semaphore(30)
     
     async def fetch_endpoint(self, session, endpoint, params=None):
@@ -220,11 +166,7 @@ class AllApiCatchAllFetcher:
         except Exception as e:
             print(f"Warning: Could not trigger VAR logger: {e}")
         
-        # Create monitoring mirror file
-        try:
-            subprocess.run([sys.executable, 'all_api_mirror.py'], cwd=os.path.dirname(__file__), check=False)
-        except Exception as e:
-            print(f"Warning: Could not create mirror file: {e}")
+        
     
     def analyze_match_stats(self, all_data):
         """Analyze match statistics from live data"""
@@ -314,7 +256,10 @@ if __name__ == "__main__":
             start_time = time.time()
             
             try:
-                print(f"\n[Fetch #{fetch_count}] Starting at {all_api_fetcher.logger.get_nyc_timestamp()}")
+                nyc_tz = pytz.timezone('America/New_York')
+                nyc_time = datetime.now(nyc_tz)
+                nyc_timestamp = nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
+                print(f"\n[Fetch #{fetch_count}] Starting at {nyc_timestamp}")
                 
                 # Perform the fetch
                 result = await all_api_fetcher.catch_all_fetch()
@@ -324,7 +269,7 @@ if __name__ == "__main__":
                 fetch_duration = end_time - start_time
                 
                 print(f"[Fetch #{fetch_count}] Completed in {fetch_duration:.2f} seconds")
-                print(f"[Fetch #{fetch_count}] Logged to: {all_api_fetcher.logger.log_path}")
+                print(f"[Fetch #{fetch_count}] Logged via external script")
                 
                 # Calculate wait time (60 seconds total cycle time)
                 target_interval = 60

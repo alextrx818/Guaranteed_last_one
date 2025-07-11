@@ -11,64 +11,54 @@ from persistent_state import PersistentStateManager
 
 class PrettyPrintConversionLogger:
     def __init__(self, log_dir="pretty_conversion_log", max_fetches=50):
-        self.log_dir = log_dir
-        self.max_fetches = max_fetches
-        self.state_manager = PersistentStateManager("pretty_print_conversion", max_fetches)
-        self.fetch_count, self.accumulated_data = self.state_manager.load_state()
-        self.setup_logging()
-    
-    def setup_logging(self):
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"pretty_conversion_log_{timestamp}.json"
-        self.log_path = os.path.join(self.log_dir, log_filename)
-        
-        self.logger = logging.getLogger('pretty_conversion_logger')
-        self.logger.setLevel(logging.INFO)
-        
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        handler = logging.FileHandler(self.log_path)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        # Simple S3 delegation - no local state needed
+        print(f"[Pretty Print Conversion Logger] Initialized - delegates to S3 external script")
     
     def log_fetch(self, conversion_data, fetch_id, nyc_timestamp):
-        """Pure catch-all pass-through logging with persistent state"""
-        self.fetch_count += 1
-        
-        # Pure pass-through - use the data exactly as received from pretty_print.json
-        log_entry = conversion_data
-        
-        # Save state after each fetch
-        self.state_manager.save_state(self.fetch_count, self.accumulated_data)
-        
-        # Write to rotating log
-        with open(self.log_path, 'w') as f:
-            json.dump(self.accumulated_data, f, indent=2)
-        
-        # Append to main pretty_print_conversion.json file
-        with open('pretty_print_conversion.json', 'a') as f:
-            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
-            json.dump(log_entry, f, indent=2)
-            f.write('\n')
-            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
-        
-        # Check for rotation
-        if self.state_manager.should_rotate(self.fetch_count):
-            self.rotate_log()
+        """Delegate to external S3 script for logging"""
+        try:
+            import subprocess
+            import tempfile
+            
+            print(f"[Pretty Print Conversion Logger] Starting delegation - fetch_id: {fetch_id}")
+            
+            # Create temp file with log data
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                log_data = {
+                    "conversion_data": conversion_data,
+                    "fetch_id": fetch_id,
+                    "nyc_timestamp": nyc_timestamp
+                }
+                json.dump(log_data, temp_file)
+                temp_file_path = temp_file.name
+            
+            print(f"[Pretty Print Conversion Logger] Created temp file: {temp_file_path}")
+            
+            # Execute external S3 script
+            script_path = os.path.join(os.path.dirname(__file__), 'pretty_print_conversion_rotating_s3.py')
+            print(f"[Pretty Print Conversion Logger] Calling S3 script: {script_path}")
+            
+            result = subprocess.run([
+                sys.executable, script_path, temp_file_path
+            ], capture_output=True, text=True)
+            
+            print(f"[Pretty Print Conversion Logger] S3 script return code: {result.returncode}")
+            if result.stdout:
+                print(f"[Pretty Print Conversion Logger] S3 script stdout: {result.stdout}")
+            if result.stderr:
+                print(f"[Pretty Print Conversion Logger] S3 script stderr: {result.stderr}")
+            
+            if result.returncode != 0:
+                print(f"[Pretty Print Conversion Logger] S3 script failed with code {result.returncode}")
+            else:
+                print(f"[Pretty Print Conversion Logger] S3 delegation successful")
+                
+        except Exception as e:
+            print(f"[Pretty Print Conversion Logger] Error delegating to S3: {e}")
     
     def rotate_log(self):
-        # Reset state
-        self.state_manager.reset_state()
-        self.fetch_count = 0
-        self.accumulated_data = []
-        self.setup_logging()
-        # Clear the main pretty_print_conversion.json file
-        open('pretty_print_conversion.json', 'w').close()
+        # No-op - rotation handled by S3 script
+        pass
 
 class PrettyPrintConversionProcessor:
     def __init__(self):
@@ -117,16 +107,16 @@ class PrettyPrintConversionProcessor:
             with open(input_file_path, 'r') as f:
                 content = f.read()
             
-            # Find start marker
-            start_marker = f'=== FETCH START: {fetch_id} |'
+            # Find start marker - match the format used in pretty_print.json with fetch number
+            start_marker = f'| {fetch_id} |'  # This will match "| fetch_id |" pattern
             start_pos = content.find(start_marker)
             
             if start_pos == -1:
                 return None
             
-            # Find end marker
-            end_marker = f'=== FETCH END: {fetch_id} |'
-            end_pos = content.find(end_marker, start_pos)
+            # Find end marker - same pattern for end
+            end_marker = f'| {fetch_id} |'  # Same pattern for end
+            end_pos = content.find(end_marker, start_pos + len(start_marker))  # Find NEXT occurrence
             
             if end_pos == -1:
                 return None
@@ -621,7 +611,7 @@ if __name__ == "__main__":
         # Single execution mode - just do one pass-through and exit
         try:
             result = pretty_conversion_processor.process_pretty_print_data("../4_pretty_print/pretty_print.json")
-            print(f"Single pretty-conversion completed! Logged to: {pretty_conversion_processor.logger.log_path}")
+            print(f"Single pretty-conversion completed! Data delegated to S3 logger.")
         except Exception as e:
             print(f"Single pretty-conversion failed: {e}")
         sys.exit(0)
@@ -662,7 +652,7 @@ if __name__ == "__main__":
                 duration = end_time - start_time
                 
                 print(f"[Conversion #{conversion_count}] Completed in {duration:.2f} seconds")
-                print(f"[Conversion #{conversion_count}] Logged to: {pretty_conversion_processor.logger.log_path}")
+                print(f"[Conversion #{conversion_count}] Data delegated to S3 logger")
                 
                 # Calculate wait time (60 seconds total cycle time)
                 target_interval = 60

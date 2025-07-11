@@ -11,64 +11,54 @@ from persistent_state import PersistentStateManager
 
 class MonitorCentralLogger:
     def __init__(self, log_dir="monitor_central_log", max_fetches=50):
-        self.log_dir = log_dir
-        self.max_fetches = max_fetches
-        self.state_manager = PersistentStateManager("monitor_central", max_fetches)
-        self.fetch_count, self.accumulated_data = self.state_manager.load_state()
-        self.setup_logging()
-    
-    def setup_logging(self):
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"monitor_central_log_{timestamp}.json"
-        self.log_path = os.path.join(self.log_dir, log_filename)
-        
-        self.logger = logging.getLogger('monitor_central_logger')
-        self.logger.setLevel(logging.INFO)
-        
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        handler = logging.FileHandler(self.log_path)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        # Simple S3 delegation - no local state needed
+        print(f"[Monitor Central Logger] Initialized - delegates to S3 external script")
     
     def log_fetch(self, monitor_data, fetch_id, nyc_timestamp):
-        """Pure catch-all pass-through logging with persistent state"""
-        self.fetch_count += 1
-        
-        # Pure pass-through - use the data exactly as received from pretty_print_conversion.json
-        log_entry = monitor_data
-        
-        # Save state after each fetch
-        self.state_manager.save_state(self.fetch_count, self.accumulated_data)
-        
-        # Append to main monitor_central.json file
-        with open('monitor_central.json', 'a') as f:
-            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
-            json.dump(log_entry, f, indent=2)
-            f.write('\n')
-            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
-        
-        # Check for rotation
-        if self.state_manager.should_rotate(self.fetch_count):
-            self.rotate_log()
+        """Delegate to external S3 script for logging"""
+        try:
+            import subprocess
+            import tempfile
+            
+            print(f"[Monitor Central Logger] Starting delegation - fetch_id: {fetch_id}")
+            
+            # Create temp file with log data
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                log_data = {
+                    "monitor_data": monitor_data,
+                    "fetch_id": fetch_id,
+                    "nyc_timestamp": nyc_timestamp
+                }
+                json.dump(log_data, temp_file)
+                temp_file_path = temp_file.name
+            
+            print(f"[Monitor Central Logger] Created temp file: {temp_file_path}")
+            
+            # Execute external S3 script
+            script_path = os.path.join(os.path.dirname(__file__), 'monitor_central_rotating_s3.py')
+            print(f"[Monitor Central Logger] Calling S3 script: {script_path}")
+            
+            result = subprocess.run([
+                sys.executable, script_path, temp_file_path
+            ], capture_output=True, text=True)
+            
+            print(f"[Monitor Central Logger] S3 script return code: {result.returncode}")
+            if result.stdout:
+                print(f"[Monitor Central Logger] S3 script stdout: {result.stdout}")
+            if result.stderr:
+                print(f"[Monitor Central Logger] S3 script stderr: {result.stderr}")
+            
+            if result.returncode != 0:
+                print(f"[Monitor Central Logger] S3 script failed with code {result.returncode}")
+            else:
+                print(f"[Monitor Central Logger] S3 delegation successful")
+                
+        except Exception as e:
+            print(f"[Monitor Central Logger] Error delegating to S3: {e}")
     
     def rotate_log(self):
-        # Save current accumulated data to rotated log before clearing
-        with open(self.log_path, 'w') as f:
-            json.dump(self.accumulated_data, f, indent=2)
-        
-        # Reset state
-        self.state_manager.reset_state()
-        self.fetch_count = 0
-        self.accumulated_data = []
-        self.setup_logging()
-        # Clear the main monitor_central.json file
-        open('monitor_central.json', 'w').close()
+        # No-op - rotation handled by S3 script
+        pass
 
 class MonitorCentralProcessor:
     def __init__(self):
@@ -132,16 +122,16 @@ class MonitorCentralProcessor:
             with open(input_file_path, 'r') as f:
                 content = f.read()
             
-            # Find start marker
-            start_marker = f'=== FETCH START: {fetch_id} |'
+            # Find start marker - match the format used in pretty_print_conversion.json with fetch number
+            start_marker = f'| {fetch_id} |'  # This will match "| fetch_id |" pattern
             start_pos = content.find(start_marker)
             
             if start_pos == -1:
                 return None
             
-            # Find end marker
-            end_marker = f'=== FETCH END: {fetch_id} |'
-            end_pos = content.find(end_marker, start_pos)
+            # Find end marker - same pattern for end
+            end_marker = f'| {fetch_id} |'  # Same pattern for end
+            end_pos = content.find(end_marker, start_pos + len(start_marker))  # Find NEXT occurrence
             
             if end_pos == -1:
                 return None
@@ -462,11 +452,16 @@ class MonitorCentralProcessor:
         # Extract footer data from the conversion data
         footer_data = latest_conversion.get("CONVERSION_FOOTER", {})
         
+        # Extract fetch number from the original conversion header - PURE PASS-THROUGH
+        header_data = latest_conversion.get("CONVERSION_HEADER", {})
+        fetch_number = header_data.get("fetch_number", "unknown")
+        
         # Create final monitor data structure
         monitor_data = {
             "monitor_central_display": monitor_matches,
             "total_matches": len(monitor_matches),
             "generated_at": latest_conversion.get("CONVERTED_DATA", {}).get("SOURCE_PRETTY_PRINT_HEADER", {}).get("nyc_timestamp", ""),
+            "CONVERSION_HEADER": header_data,  # Pass-through original header for S3 script
             "MONITOR_FOOTER": {
                 "random_fetch_id": footer_data.get("random_fetch_id", ""),
                 "nyc_timestamp": footer_data.get("nyc_timestamp", ""),
@@ -476,7 +471,8 @@ class MonitorCentralProcessor:
                 "total_matches": footer_data.get("total_matches", 0),
                 "matches_in_play": footer_data.get("matches_in_play", 0),
                 "match_status_breakdown": footer_data.get("match_status_breakdown", []),
-                "total_matches_with_odds": footer_data.get("total_matches_with_odds", 0)
+                "total_matches_with_odds": footer_data.get("total_matches_with_odds", 0),
+                "fetch_number": fetch_number  # Add fetch number to footer for easy access
             }
         }
         

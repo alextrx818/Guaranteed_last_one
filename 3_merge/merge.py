@@ -4,10 +4,7 @@ user = "thenecpt"
 secret = "0c55322e8e196d6ef9066fa4252cf386"
 
 import json
-import logging
 import os
-import random
-import string
 import time
 import asyncio
 import aiohttp
@@ -16,112 +13,43 @@ import pytz
 import sys
 sys.path.append('../2_cached_endpoints')
 from team_compeition_country_cache import CacheManager
-sys.path.append('../shared_utils')
-from persistent_state import PersistentStateManager
 
 class MergeLogger:
-    def __init__(self, log_dir="merge_log", max_fetches=50):
-        self.log_dir = log_dir
-        self.max_fetches = max_fetches
-        self.state_manager = PersistentStateManager("merge", max_fetches)
-        self.fetch_count, self.accumulated_data = self.state_manager.load_state()
-        self.setup_logging()
-    
-    def generate_random_id(self, length=12):
-        """Generate random alphanumeric ID for fetch tracking"""
-        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-    
-    def get_nyc_timestamp(self):
-        """Get current NYC timezone timestamp in MM/DD/YYYY format with AM/PM"""
-        nyc_tz = pytz.timezone('America/New_York')
-        nyc_time = datetime.now(nyc_tz)
-        return nyc_time.strftime("%m/%d/%Y %I:%M:%S %p %Z")
-    
-    def setup_logging(self):
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"merge_log_{timestamp}.json"
-        self.log_path = os.path.join(self.log_dir, log_filename)
-        
-        self.logger = logging.getLogger('merge_logger')
-        self.logger.setLevel(logging.INFO)
-        
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        handler = logging.FileHandler(self.log_path)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+    def __init__(self):
+        pass
     
     def log_fetch(self, merged_data, merge_duration=None, match_stats=None):
-        """Log merged data with header/footer using same random ID from all_api.py"""
-        self.fetch_count += 1
-        
-        # Extract the random ID from all_api source data for pipeline continuity
-        source_fetch_id = None
-        if merged_data and merged_data.get("SOURCE_ALL_API_HEADER"):
-            source_fetch_id = merged_data["SOURCE_ALL_API_HEADER"].get("random_fetch_id")
-        
-        # Use all_api's random ID if available, otherwise generate new one
-        fetch_id = source_fetch_id if source_fetch_id else self.generate_random_id()
-        nyc_timestamp = self.get_nyc_timestamp()
-        
-        footer_data = {
-            "random_fetch_id": fetch_id,
-            "nyc_timestamp": nyc_timestamp,
-            "merge_completion_time_seconds": round(merge_duration, 3) if merge_duration else None,
-            "fetch_end": "=== MERGED DATA END ==="
+        log_data = {
+            "merged_data": merged_data,
+            "merge_duration": merge_duration,
+            "match_stats": match_stats
         }
+        import tempfile
+        import subprocess
+        import sys
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+            json.dump(log_data, temp_file)
+            temp_file_path = temp_file.name
         
-        # Add match statistics to footer
-        if match_stats:
-            footer_data["total_matches"] = match_stats["total_matches"]
-            footer_data["matches_in_play"] = match_stats["matches_in_play"]
-            footer_data["match_status_breakdown"] = match_stats["status_breakdown"]
+        result = subprocess.run([
+            sys.executable, 
+            'merge_rotating_s3.py', 
+            temp_file_path
+        ], cwd=os.path.dirname(__file__), check=False, capture_output=True, text=True)
         
-        log_entry = {
-            "FETCH_HEADER": {
-                "fetch_number": self.fetch_count,
-                "random_fetch_id": fetch_id,
-                "nyc_timestamp": nyc_timestamp,
-                "fetch_start": "=== MERGED DATA START ==="
-            },
-            "MERGED_DATA": merged_data,
-            "FETCH_FOOTER": footer_data
-        }
+        # Debug output to see if external script is being called
+        if result.returncode != 0:
+            print(f"[MergeLogger] Error calling merge_rotating_s3.py: {result.stderr}")
+        else:
+            print(f"[MergeLogger] Successfully called merge_rotating_s3.py")
+            if result.stdout:
+                print(f"[MergeLogger] S3 output: {result.stdout}")
         
-        # Add to accumulated data for rotating log
-        self.accumulated_data.append(log_entry)
-        
-        # Save state after each fetch
-        self.state_manager.save_state(self.fetch_count, self.accumulated_data)
-        
-        # Write to rotating log
-        with open(self.log_path, 'w') as f:
-            json.dump(self.accumulated_data, f, indent=2)
-        
-        # Append to main merge.json file
-        with open('merge.json', 'a') as f:
-            f.write(f'=== FETCH START: {fetch_id} | {nyc_timestamp} ===\n')
-            json.dump(log_entry, f, indent=2)
-            f.write('\n')
-            f.write(f'=== FETCH END: {fetch_id} | {nyc_timestamp} ===\n')
-        
-        # Check for rotation
-        if self.state_manager.should_rotate(self.fetch_count):
-            self.rotate_log()
-    
-    def rotate_log(self):
-        # Reset state
-        self.state_manager.reset_state()
-        self.fetch_count = 0
-        self.accumulated_data = []
-        self.setup_logging()
-        # Clear the main merge.json file
-        open('merge.json', 'w').close()
+        # Clean up temp file
+        try:
+            os.unlink(temp_file_path)
+        except:
+            pass
 
 class SportsMerger:
     def __init__(self):
@@ -416,16 +344,17 @@ class SportsMerger:
             with open(all_api_data_path, 'r') as f:
                 content = f.read()
             
-            # Find start marker
-            start_marker = f'=== FETCH START: {fetch_id} |'
+            # Find start marker - NEW FORMAT with fetch number
+            start_marker = f'| {fetch_id} |'  # Match "| P7FuiKA0u18B |" pattern
             start_pos = content.find(start_marker)
             
             if start_pos == -1:
+                print(f"[MERGE DEBUG] Could not find start marker for fetch_id: {fetch_id}")
                 return None
             
-            # Find end marker
-            end_marker = f'=== FETCH END: {fetch_id} |'
-            end_pos = content.find(end_marker, start_pos)
+            # Find end marker - NEW FORMAT with fetch number  
+            end_marker = f'| {fetch_id} |'  # Same pattern for end
+            end_pos = content.find(end_marker, start_pos + len(start_marker))  # Find NEXT occurrence
             
             if end_pos == -1:
                 return None
@@ -482,16 +411,23 @@ class SportsMerger:
     
     async def merge_sports_data(self, all_api_data_path):
         """Main merge function - pure raw data reorganization"""
+        print(f"[MERGE DEBUG] Starting merge_sports_data function")
         merge_start_time = time.time()
         
         # Find unprocessed fetch ID using new tracking system
+        print(f"[MERGE DEBUG] Looking for unprocessed fetch ID")
         fetch_id = self.find_unprocessed_fetch_id()
+        print(f"[MERGE DEBUG] Found fetch_id: {fetch_id}")
         if not fetch_id:
+            print(f"[MERGE DEBUG] No unprocessed fetch IDs found - returning error")
             return {"error": "No unprocessed fetch IDs found"}
         
         # Extract complete fetch data by ID
+        print(f"[MERGE DEBUG] Extracting data for fetch_id: {fetch_id}")
         latest_fetch = self.extract_fetch_data_by_id(fetch_id, all_api_data_path)
+        print(f"[MERGE DEBUG] latest_fetch result: {latest_fetch is not None}")
         if not latest_fetch:
+            print(f"[MERGE DEBUG] EARLY RETURN: Could not extract data for fetch ID: {fetch_id}")
             return {"error": f"Could not extract data for fetch ID: {fetch_id}"}
         
         raw_data = latest_fetch.get("RAW_API_DATA", {})
@@ -585,14 +521,18 @@ class SportsMerger:
         match_stats = self.analyze_match_stats(merged_data)
         
         # Log the merged data
+        print(f"[MERGE DEBUG] About to call self.logger.log_fetch()")
         self.logger.log_fetch(merged_data, merge_duration, match_stats)
+        print(f"[MERGE DEBUG] Finished calling self.logger.log_fetch()")
         
         # Mark fetch as completed in tracking file
         self.mark_fetch_completed(fetch_id)
         
         # Trigger pretty_print.py after merge completes
+        print(f"[MERGE DEBUG] About to trigger pretty_print")
         self.trigger_pretty_print()
         
+        print(f"[MERGE DEBUG] merge_sports_data completed successfully - about to return")
         return merged_data
     
     def trigger_pretty_print(self):
@@ -604,13 +544,21 @@ class SportsMerger:
             # Run pretty_print.py as a subprocess to process the latest data
             pretty_print_script_path = os.path.join(os.path.dirname(__file__), '..', '4_pretty_print', 'pretty_print.py')
             
+            print(f"[MERGE DEBUG] Calling pretty_print.py at: {pretty_print_script_path}")
+            
             # Execute pretty_print.py with the current merge.json
-            subprocess.run([sys.executable, pretty_print_script_path, '--single-run'], 
+            result = subprocess.run([sys.executable, pretty_print_script_path, '--single-run'], 
                           cwd=os.path.join(os.path.dirname(__file__), '..', '4_pretty_print'),
-                          check=False)  # Don't raise exception if pretty_print fails
+                          check=False, capture_output=True, text=True)  # Capture output for debugging
+            
+            print(f"[MERGE DEBUG] Pretty print return code: {result.returncode}")
+            if result.stdout:
+                print(f"[MERGE DEBUG] Pretty print stdout: {result.stdout}")
+            if result.stderr:
+                print(f"[MERGE DEBUG] Pretty print stderr: {result.stderr}")
             
         except Exception as e:
-            print(f"Warning: Could not trigger pretty_print process: {e}")
+            print(f"[MERGE DEBUG] Error triggering pretty_print: {e}")
             # Continue normal operation even if pretty_print fails
 
 # Initialize the merger
@@ -628,9 +576,11 @@ if __name__ == "__main__":
         # Single execution mode - just do one merge and exit
         try:
             result = asyncio.run(sports_merger.merge_sports_data("../1_all_api/all_api.json"))
-            print(f"Single merge completed! Logged to: {sports_merger.logger.log_path}")
+            print(f"Single merge completed! Logged to: merge.json")
         except Exception as e:
-            print(f"Single merge failed: {e}")
+            print(f"Single merge failed with exception: {e}")
+            import traceback
+            traceback.print_exc()
         sys.exit(0)
     
     # Global flag for graceful shutdown (continuous mode)
@@ -669,7 +619,7 @@ if __name__ == "__main__":
                 merge_duration = end_time - start_time
                 
                 print(f"[Merge #{merge_count}] Completed in {merge_duration:.2f} seconds")
-                print(f"[Merge #{merge_count}] Logged to: {sports_merger.logger.log_path}")
+                print(f"[Merge #{merge_count}] Logged to: merge.json")
                 
                 # Calculate wait time (60 seconds total cycle time)
                 target_interval = 60
